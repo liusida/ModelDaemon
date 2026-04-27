@@ -1,71 +1,30 @@
-# ModelDaemon
+# ModelDaemon (demo)
 
-A tiny long-lived process that loads heavy models once and runs your Python scripts **in the same interpreter**, so scripts call `get_model()` instead of reloading weights.
+Keep heavy Python objects in one process. A second terminal sends “run this script”; the daemon executes it **in-process** and injects `get_model()` so you skip reload time.
 
-## Why
+Not production-ready—just shows the pattern.
 
-Starting a script that loads a large checkpoint is slow. If you iterate on training or evaluation code, paying that load cost on every process exit hurts. ModelDaemon keeps objects in memory and only re-runs your script logic.
+## Run
 
-## How it works
+```text
+# terminal A
+python model_daemon.py serve loader.py
 
-1. **Serve**: You provide a small Python file with `load_models() -> dict[str, Any]`. The daemon imports it once and keeps the returned objects alive.
-2. **Run**: The CLI sends your script path to the daemon over `127.0.0.1:8765`. The daemon executes it with `runpy` in-process and injects `get_model` into the script namespace.
-
-Scripts can use either:
-
-- `from modeldaemon.runtime import get_model`, or
-- the injected `get_model` (same function).
-
-**Security:** `run` executes arbitrary code in the daemon process. Bind to localhost only (default) and treat the daemon like a local dev tool, not a network service.
-
-## Install
-
-```bash
-pip install -e .
+# terminal B
+python model_daemon.py run task.py
+python model_daemon.py run task.py --extra args
 ```
 
-## Usage
+Port defaults to `8765`. To change it, export `MODEL_DAEMON_PORT` in **both** terminals before `serve` and `run`.
 
-Terminal A — start the daemon:
+## Files
 
-```bash
-modeldaemon serve --loader examples/loader_stub.py
-# optional: --host 127.0.0.1 --port 8765
-```
+| File | Role |
+|------|------|
+| `model_daemon.py` | TCP stub + `runpy` + registry |
+| `loader.py` | `load_models() -> dict` |
+| `task.py` | example guest script |
 
-Terminal B — run a script (many times; models stay loaded):
+## Caveat
 
-```bash
-modeldaemon run examples/hello_script.py
-modeldaemon run examples/hello_script.py -- extra-arg
-```
-
-Check the server:
-
-```bash
-modeldaemon ping
-```
-
-`--host` and `--port` are accepted on `serve`, `run`, and `ping` (they must match between client and server).
-
-## Writing a loader
-
-```python
-# my_loader.py
-def load_models():
-    return {
-        "default": your_heavy_model_here,
-    }
-```
-
-Use any names you like; `get_model("default")` looks them up.
-
-## Limitations
-
-- One client at a time (sequential `accept` loop); enough for a single developer machine.
-- Stdout/stderr from the script are captured and replayed on the client; very chatty output may be large.
-- GPU / multiprocessing: sharing one loaded model across many parallel script runs in the same process is fine for sequential runs; concurrent runs would need a richer design.
-
-## License
-
-MIT
+Guest code runs inside the daemon (arbitrary code execution). Bind stays on `127.0.0.1` only.
