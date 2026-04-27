@@ -4,10 +4,27 @@ One process keeps models in RAM. Another terminal runs `task.py` **inside that p
 
 Not production-ready—just shows the pattern.
 
-## Setup
+## Setup (uv)
+
+[uv](https://docs.astral.sh/uv/) manages the venv and lockfile.
 
 ```bash
-pip install -r requirements.txt
+uv sync
+```
+
+Run commands with the project environment:
+
+```bash
+uv run python model_daemon.py serve
+uv run python model_daemon.py run task.py --model Qwen/Qwen3-0.6B
+```
+
+Or activate the venv: `source .venv/bin/activate` (Unix) then use `python` as usual.
+
+### Without uv
+
+```bash
+pip install -e .
 ```
 
 ## Run
@@ -32,6 +49,8 @@ Port defaults to `8765`. Override with `MODEL_DAEMON_PORT` in **both** terminals
 |------|------|
 | `model_daemon.py` | TCP + `runpy` + lazy `get_model(hf_id)`; optional `serve path.py` pre-warm |
 | `task.py` | example: `--model`, Qwen3-0.6B as default |
+| `pyproject.toml` | deps for `uv` / pip |
+| `uv.lock` | pinned versions (from `uv lock` / `uv sync`) |
 
 ## Caveat
 

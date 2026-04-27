@@ -58,7 +58,7 @@ def _load_hf_causal_lm(model_id: str):
         from transformers import AutoModelForCausalLM
     except ImportError as e:
         raise RuntimeError(
-            "lazy load needs torch+transformers (pip install -r requirements.txt)"
+            "lazy load needs torch+transformers (uv sync, or pip install -e .)"
         ) from e
 
     print(f"lazy-load: {model_id!r} …", file=sys.stderr, flush=True)

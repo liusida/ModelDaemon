@@ -1,0 +1,17 @@
+[project]
+name = "modeldaemon"
+version = "0.1.0"
+description = "Demo: long-lived process caches HF models; run tasks in-process."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "transformers>=4.51.0",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["model_daemon", "task"]
