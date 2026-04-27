@@ -1,57 +1,32 @@
 [English](README.md)
 
-# ModelDaemon（演示）
-
-一个进程把模型留在内存里；另一个终端在同一进程里执行 `task.py`。守护进程会包装 `AutoModelForCausalLM.from_pretrained`，因此**同一份任务脚本**既可以单独运行（每次正常完整加载），也可以在守护进程下运行（按模型 id 首次加载后缓存，直到进程退出）。`task.py` 不需要 import 或提及守护进程。
-
-这不是生产级方案，只用来演示思路。
-
-## 环境（uv）
-
-用 [uv](https://docs.astral.sh/uv/) 管理虚拟环境与锁文件。
-
-```bash
-uv sync
-```
-
-只跑任务（无守护进程）：
-
-```bash
-uv run python task.py --model Qwen/Qwen3-0.6B
-```
-
-配合守护进程：
-
-```bash
-uv run model_daemon.py                    # 启动 serve（等价于显式写 `serve`）
-uv run model_daemon.py run task.py --model Qwen/Qwen3-0.6B
-```
-
-也可以激活虚拟环境：Unix 下 `source .venv/bin/activate`，再照常使用 `python`。
-
-### 不用 uv
-
-任意虚拟环境安装相同依赖即可，例如：
-
-```bash
-pip install torch "transformers>=4.51.0"
-```
+# ModelDaemon
 
 ## 运行
 
-```text
-# 终端 A
-python model_daemon.py serve
-
-# 终端 B — 示例为 Qwen3-0.6B（名称在 task.py / --model 中，不在服务端写死）
-python model_daemon.py run task.py --model Qwen/Qwen3-0.6B
+```bash
+uv sync   # 首次或依赖变更后
 ```
 
-再次使用相同 `--model` 会复用已缓存的权重（无需重新下载/加载）。换另一个 `--model` 会在首次使用时加载一次，之后也会一直缓存。
+**终端 A — 常驻进程，模型留在内存**
 
-### 耗时示例（`task.py` 在 stderr 上打印 `wall time`）
+```bash
+uv run model_daemon.py
+```
 
-两种情况下 `task.py` 相同，只是进程不同。请**在另一个终端保持 `model_daemon.py serve` 运行**，这样第二条命令会命中内存里的模型（以下为某台带 CUDA 的机器上的数据，你的环境会不同）。
+**终端 B — 与普通 `task.py` 相同，但在 A 的进程里执行**
+
+```bash
+uv run model_daemon.py run task.py --model Qwen/Qwen3-0.6B
+```
+
+若已激活虚拟环境：`python model_daemon.py` / `python model_daemon.py run task.py …`
+
+默认端口 `8765`。若修改端口，**两个终端**使用相同的 `MODEL_DAEMON_PORT`。
+
+## 耗时（`task.py` 在 stderr 打印）
+
+同一份 `task.py`；差别在于 `from_pretrained` 是在新进程里完整跑一遍，还是复用守护进程里已在显存/内存中的权重。某台 CUDA 机器上的示例：
 
 ```text
 $ python task.py
@@ -68,9 +43,32 @@ sample: "Hello Answer! I'm a bit confused about"
 wall time: 1.792s
 ```
 
-可选预热：`python model_daemon.py serve my_loader.py`，其中 `my_loader.py` 定义 `load_models() -> dict`（在跑任务前合并进缓存）。
+## 作用说明
 
-端口默认 `8765`。要改端口，**两个终端**都要设置相同的 `MODEL_DAEMON_PORT`。
+- 常驻进程按 Hugging Face 模型 id 加载并缓存权重（通过包装 `AutoModelForCausalLM.from_pretrained`）。
+- `task.py` 只用常规 Transformers 写法，不 import 守护进程。
+- 单独运行 `task.py` 每次冷启动；通过 `model_daemon.py run …` 执行则直到服务端退出前都可复用权重。
+- 相同 `--model` 会跳过重复加载；新 id 首次加载后也会保留在缓存中。
+
+可选：`python model_daemon.py serve my_loader.py`，`my_loader.py` 中定义 `load_models() -> dict`，在跑任务前预填缓存。
+
+## 环境
+
+用 [uv](https://docs.astral.sh/uv/) 管理虚拟环境与 `uv.lock`。
+
+只跑任务（无守护进程）：
+
+```bash
+uv run python task.py --model Qwen/Qwen3-0.6B
+```
+
+不用 uv：
+
+```bash
+pip install torch "transformers>=4.51.0"
+```
+
+虚拟环境已同步时可用 `uv run --no-sync …` 减少重复安装提示。
 
 ## 文件
 
@@ -78,9 +76,7 @@ wall time: 1.792s
 |------|------|
 | `model_daemon.py` | TCP + `runpy`，包装 `AutoModelForCausalLM.from_pretrained`；可选 `serve 某路径.py` 预热 |
 | `task.py` | 示例：`--model`，默认 Qwen3-0.6B |
-| `pyproject.toml` | 仅列出依赖供 `uv` 使用（不作为可安装包发布） |
-| `uv.lock` | 固定版本（由 `uv lock` / `uv sync` 生成） |
+| `pyproject.toml` | 供 `uv` 使用的依赖列表（虚拟项目，不作为库发布） |
+| `uv.lock` | 固定版本 |
 
-## 注意
-
-访客代码在守护进程内执行（等同于任意代码执行）。监听地址仅为 `127.0.0.1`。
+访客代码在守护进程内执行。服务仅监听 `127.0.0.1`。
