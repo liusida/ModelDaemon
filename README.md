@@ -47,6 +47,25 @@ python model_daemon.py run task.py --model Qwen/Qwen3-0.6B
 
 Second run with the same `--model` reuses the cached weights (no download/load). A different `--model` loads once and stays cached too.
 
+### Timing example (`task.py` reports `wall time` on stderr)
+
+`task.py` is the same in both cases; only the process changes. Keep **`model_daemon.py serve`** running in another terminal so the second command hits an in-memory model (numbers are one machine with CUDA; yours will differ).
+
+```text
+$ python task.py
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|████████████████| 311/311 [00:00<00:00, 3634.76it/s]
+Qwen/Qwen3-0.6B: 596.05M params, device=cuda:0
+[transformers] The following generation flags are not valid and may be ignored: ['temperature', 'top_p', 'top_k']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+sample: "Hello Answer! I'm a bit confused about"
+wall time: 3.680s
+
+$ python model_daemon.py run task.py
+Qwen/Qwen3-0.6B: 596.05M params, device=cuda:0
+sample: "Hello Answer! I'm a bit confused about"
+wall time: 1.792s
+```
+
 Optional pre-warm: `python model_daemon.py serve my_loader.py` if `my_loader.py` defines `load_models() -> dict` (merged into the cache before any task).
 
 Port defaults to `8765`. Override with `MODEL_DAEMON_PORT` in **both** terminals.
