@@ -3,7 +3,8 @@ Demo: one long-lived process; guest scripts run in-process. Their normal
 ``AutoModelForCausalLM.from_pretrained(...)`` calls are wrapped so the first load
 is cached by model id until the daemon exits. The task file needs no daemon imports.
 
-  Terminal A: python model_daemon.py serve
+  Terminal A: uv run model_daemon.py          # same as: … serve
+              python model_daemon.py serve
   Terminal B: python model_daemon.py run task.py --model org/name
 
 Optional: python model_daemon.py serve warmup.py  # warmup.py defines load_models() -> dict
@@ -189,8 +190,10 @@ def _client(script: str, argv: list[str], host: str, port: int) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = argv if argv is not None else sys.argv[1:]
-    if len(argv) < 1 or argv[0] not in ("serve", "run"):
+    argv = list(argv if argv is not None else sys.argv[1:])
+    if len(argv) == 0:
+        argv = ["serve"]
+    if argv[0] not in ("serve", "run"):
         print(__doc__.strip(), file=sys.stderr)
         return 2
 

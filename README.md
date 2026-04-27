@@ -21,8 +21,8 @@ uv run python task.py --model Qwen/Qwen3-0.6B
 With the daemon:
 
 ```bash
-uv run python model_daemon.py serve
-uv run python model_daemon.py run task.py --model Qwen/Qwen3-0.6B
+uv run model_daemon.py                    # starts serve (same as adding `serve`)
+uv run model_daemon.py run task.py --model Qwen/Qwen3-0.6B
 ```
 
 Or activate the venv: `source .venv/bin/activate` (Unix) then use `python` as usual.
