@@ -2,6 +2,8 @@
 
 # ModelDaemon
 
+You often run the same Python script many times; each new process evicts the model from memory, so you pay load time again—here one long-lived process keeps the weights in VRAM (or RAM on CPU) while you keep iterating.
+
 ## Run
 
 ```bash
