@@ -7,7 +7,8 @@ in the same interpreter so get_model() returns the real in-memory object.
 
 Optional: python model_daemon.py serve warmup.py  # warmup.py defines load_models() -> dict
 
-get_model(hf_model_id) lazy-loads from Hugging Face on first use, caches by id until exit.
+get_model(hf_model_id) returns the same kind of object as AutoModelForCausalLM.from_pretrained
+(lazy on first use, cached by id until exit). Load tokenizers in the task with AutoTokenizer as usual.
 """
 
 from __future__ import annotations
@@ -50,18 +51,17 @@ def _recv_msg(sock: socket.socket) -> dict:
 _REGISTRY: dict = {}
 
 
-def _load_hf_causal_lm(model_id: str) -> dict:
-    """Generic HF load; any repo id. Not invoked until a guest calls get_model(id)."""
+def _load_hf_causal_lm(model_id: str):
+    """Same stack as AutoModelForCausalLM.from_pretrained; not called until get_model(id)."""
     try:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from transformers import AutoModelForCausalLM
     except ImportError as e:
         raise RuntimeError(
             "lazy load needs torch+transformers (pip install -r requirements.txt)"
         ) from e
 
     print(f"lazy-load: {model_id!r} …", file=sys.stderr, flush=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.float16 if device == "cuda" else torch.float32
     model = AutoModelForCausalLM.from_pretrained(
@@ -70,11 +70,11 @@ def _load_hf_causal_lm(model_id: str) -> dict:
         trust_remote_code=True,
     )
     model = model.to(device)
-    return {"model": model, "tokenizer": tokenizer, "model_id": model_id}
+    return model
 
 
-def get_model(model_id: str) -> dict:
-    """Injected into guest scripts. Caches by Hugging Face model id (lazy on first use)."""
+def get_model(model_id: str):
+    """Injected into guest scripts: cached AutoModelForCausalLM (or pre-seeded loader value)."""
     if not isinstance(model_id, str) or not model_id.strip():
         raise ValueError("get_model(model_id) needs a non-empty string (HF repo id)")
     if model_id not in _REGISTRY:
