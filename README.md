@@ -30,6 +30,7 @@ Terminal A — start the daemon:
 
 ```bash
 modeldaemon serve --loader examples/loader_stub.py
+# optional: --host 127.0.0.1 --port 8765
 ```
 
 Terminal B — run a script (many times; models stay loaded):
@@ -44,6 +45,8 @@ Check the server:
 ```bash
 modeldaemon ping
 ```
+
+`--host` and `--port` are accepted on `serve`, `run`, and `ping` (they must match between client and server).
 
 ## Writing a loader
 
