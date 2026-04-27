@@ -2,8 +2,10 @@
 Demo: one long-lived process loads models; another terminal asks it to run a script
 in the same interpreter so get_model() returns the real in-memory object.
 
-  Terminal A: python model_daemon.py serve loader.py
+  Terminal A: python model_daemon.py serve
   Terminal B: python model_daemon.py run task.py --model org/name
+
+Optional: python model_daemon.py serve warmup.py  # warmup.py defines load_models() -> dict
 
 get_model(hf_model_id) lazy-loads from Hugging Face on first use, caches by id until exit.
 """
@@ -131,10 +133,13 @@ def _run_guest(script_path: str, argv: list[str]) -> dict:
         sys.argv = old_argv
 
 
-def _serve(loader_path: str, host: str, port: int) -> None:
+def _serve(loader_path: str | None, host: str, port: int) -> None:
     global _REGISTRY
-    initial = _load_models(loader_path)
-    _REGISTRY = dict(initial)
+    if loader_path:
+        initial = _load_models(loader_path)
+        _REGISTRY = dict(initial)
+    else:
+        _REGISTRY = {}
     print(f"startup cache: {list(_REGISTRY)}", file=sys.stderr)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -167,7 +172,7 @@ def _client(script: str, argv: list[str], host: str, port: int) -> int:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((host, port))
     except ConnectionRefusedError:
-        print("no server — start: python model_daemon.py serve loader.py", file=sys.stderr)
+        print("no server — start: python model_daemon.py serve", file=sys.stderr)
         return 1
     try:
         _send_msg(
@@ -190,7 +195,7 @@ def _client(script: str, argv: list[str], host: str, port: int) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
-    if len(argv) < 2 or argv[0] not in ("serve", "run"):
+    if len(argv) < 1 or argv[0] not in ("serve", "run"):
         print(__doc__.strip(), file=sys.stderr)
         return 2
 
@@ -198,9 +203,13 @@ def main(argv: list[str] | None = None) -> int:
     port = int(os.environ.get("MODEL_DAEMON_PORT", "8765"))
 
     if argv[0] == "serve":
-        loader = argv[1]
+        loader = argv[1] if len(argv) > 1 else None
         _serve(loader, host, port)
         return 0
+
+    if len(argv) < 2:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
 
     script = argv[1]
     rest = argv[2:]
