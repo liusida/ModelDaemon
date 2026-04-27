@@ -2,7 +2,7 @@
 
 # ModelDaemon
 
-You often run the same Python script many times; each new process evicts the model from memory, so you pay load time again—here one long-lived process keeps the weights in VRAM (or RAM on CPU) while you keep iterating.
+When you iterate on a script, you typically run it over and over—but each new Python process starts empty, so the model is loaded from scratch every time and that adds up. ModelDaemon keeps one server process alive so the same weights stay in GPU memory (VRAM) or, on CPU, in RAM until you stop it.
 
 ## Run
 
