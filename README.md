@@ -1,3 +1,5 @@
+[中文版](README.zh.md)
+
 # ModelDaemon (demo)
 
 One process keeps models in RAM. Another terminal runs `task.py` **inside that process**. The daemon wraps `AutoModelForCausalLM.from_pretrained` so the **same task script** can run standalone (normal load every time) or under the daemon (first load cached by model id until exit). `task.py` does not import or mention the daemon.
