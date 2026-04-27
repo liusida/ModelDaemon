@@ -13,6 +13,7 @@ Optional: python model_daemon.py serve warmup.py  # warmup.py defines load_model
 from __future__ import annotations
 
 import contextlib
+import errno
 import importlib.util
 import io
 import json
@@ -140,7 +141,20 @@ def _serve(loader_path: str | None, host: str, port: int) -> None:
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((host, port))
+    try:
+        sock.bind((host, port))
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
+            print(
+                f"port {port} already in use (often another ModelDaemon).\n"
+                f"  ss -tlnp | grep ':{port}'\n"
+                f"  lsof -i TCP:{port}\n"
+                f"Stop that process, or use another port in both terminals, e.g.\n"
+                f"  MODEL_DAEMON_PORT=9876 uv run model_daemon.py",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from e
+        raise
     sock.listen(4)
     print(f"listening {host}:{port} (Ctrl+C to stop)", file=sys.stderr)
     try:
