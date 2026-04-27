@@ -61,7 +61,7 @@ def _ensure_automodel_cache_patch() -> None:
         from transformers import AutoModelForCausalLM
     except ImportError as e:
         raise RuntimeError(
-            "need torch+transformers in the daemon env (uv sync, or pip install -e .)"
+            "need torch+transformers in the daemon env (uv sync)"
         ) from e
 
     _orig = AutoModelForCausalLM.from_pretrained.__func__
@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     host = "127.0.0.1"
-    port = int(os.environ.get("MODEL_DAEMON_PORT", "8765"))
+    port = int(os.environ.get("MODEL_DAEMON_PORT", "9870"))
 
     if argv[0] == "serve":
         loader = argv[1] if len(argv) > 1 else None

@@ -29,8 +29,10 @@ Or activate the venv: `source .venv/bin/activate` (Unix) then use `python` as us
 
 ### Without uv
 
+Use any venv and install the same deps, for example:
+
 ```bash
-pip install -e .
+pip install torch "transformers>=4.51.0"
 ```
 
 ## Run
@@ -53,9 +55,9 @@ Port defaults to `8765`. Override with `MODEL_DAEMON_PORT` in **both** terminals
 
 | File | Role |
 |------|------|
-| `model_daemon.py` | TCP + `runpy` + lazy `get_model(hf_id)`; optional `serve path.py` pre-warm |
+| `model_daemon.py` | TCP + `runpy` + wraps `AutoModelForCausalLM.from_pretrained`; optional `serve path.py` pre-warm |
 | `task.py` | example: `--model`, Qwen3-0.6B as default |
-| `pyproject.toml` | deps for `uv` / pip |
+| `pyproject.toml` | dependency list for `uv` only (not an installable package) |
 | `uv.lock` | pinned versions (from `uv lock` / `uv sync`) |
 
 ## Caveat
