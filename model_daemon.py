@@ -3,16 +3,18 @@ Demo: one long-lived process loads models; another terminal asks it to run a scr
 in the same interpreter so get_model() returns the real in-memory object.
 
   Terminal A: python model_daemon.py serve loader.py
-  Terminal B: python model_daemon.py run task.py foo bar
+  Terminal B: python model_daemon.py run task.py --model org/name
+
+get_model(hf_model_id) lazy-loads from Hugging Face on first use, caches by id until exit.
 """
 
 from __future__ import annotations
 
 import contextlib
 import importlib.util
-import os
 import io
 import json
+import os
 import runpy
 import socket
 import struct
@@ -46,11 +48,37 @@ def _recv_msg(sock: socket.socket) -> dict:
 _REGISTRY: dict = {}
 
 
-def get_model(name: str = "default"):
-    """Injected into guest scripts; only valid while the daemon runs them."""
-    if name not in _REGISTRY:
-        raise KeyError(f"no model {name!r}; loaded: {list(_REGISTRY)}")
-    return _REGISTRY[name]
+def _load_hf_causal_lm(model_id: str) -> dict:
+    """Generic HF load; any repo id. Not invoked until a guest calls get_model(id)."""
+    try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+    except ImportError as e:
+        raise RuntimeError(
+            "lazy load needs torch+transformers (pip install -r requirements.txt)"
+        ) from e
+
+    print(f"lazy-load: {model_id!r} …", file=sys.stderr, flush=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if device == "cuda" else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=dtype,
+        trust_remote_code=True,
+    )
+    model = model.to(device)
+    return {"model": model, "tokenizer": tokenizer, "model_id": model_id}
+
+
+def get_model(model_id: str) -> dict:
+    """Injected into guest scripts. Caches by Hugging Face model id (lazy on first use)."""
+    if not isinstance(model_id, str) or not model_id.strip():
+        raise ValueError("get_model(model_id) needs a non-empty string (HF repo id)")
+    if model_id not in _REGISTRY:
+        _REGISTRY[model_id] = _load_hf_causal_lm(model_id)
+        print(f"cache keys: {list(_REGISTRY)}", file=sys.stderr, flush=True)
+    return _REGISTRY[model_id]
 
 
 def _load_models(loader_path: str) -> dict:
@@ -105,8 +133,9 @@ def _run_guest(script_path: str, argv: list[str]) -> dict:
 
 def _serve(loader_path: str, host: str, port: int) -> None:
     global _REGISTRY
-    _REGISTRY = _load_models(loader_path)
-    print(f"models: {list(_REGISTRY)}", file=sys.stderr)
+    initial = _load_models(loader_path)
+    _REGISTRY = dict(initial)
+    print(f"startup cache: {list(_REGISTRY)}", file=sys.stderr)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

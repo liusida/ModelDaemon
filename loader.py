@@ -1,7 +1,5 @@
-"""Called once when the daemon starts. Return name -> object (your real model here)."""
+"""Optional models present before any task runs. Lazy HF loads still go through get_model(id)."""
 
 
 def load_models():
-    return {
-        "default": {"kind": "stub", "note": "swap in torch.load(...) etc."},
-    }
+    return {}
