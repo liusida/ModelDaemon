@@ -1,10 +1,9 @@
 """
-Example task: Qwen3-0.6B via Hugging Face.
+Example: Qwen3-0.6B with plain Hugging Face APIs.
 
-Use transformers like a normal script; only the heavy model load goes through the
-daemon cache (get_model replaces AutoModelForCausalLM.from_pretrained for weights).
-
-  python model_daemon.py run task.py --model Qwen/Qwen3-0.6B
+Runs standalone:  uv run python task.py --model Qwen/Qwen3-0.6B
+With daemon:      uv run python model_daemon.py run task.py --model Qwen/Qwen3-0.6B
+(second and later runs reuse the loaded model inside the daemon; this file stays unchanged.)
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from __future__ import annotations
 import argparse
 
 import torch
-from transformers import AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 DEFAULT_MODEL = "Qwen/Qwen3-0.6B"
 
@@ -26,10 +25,13 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
-    # In a one-off script you would write:
-    #   model = AutoModelForCausalLM.from_pretrained(args.model, ...)
-    # Here the daemon keeps the module in RAM between task runs:
-    model = get_model(args.model)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if device == "cuda" else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model,
+        torch_dtype=dtype,
+        trust_remote_code=True,
+    ).to(device)
 
     params = sum(x.numel() for x in model.parameters())
     dev = next(model.parameters()).device

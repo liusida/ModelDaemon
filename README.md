@@ -1,6 +1,6 @@
 # ModelDaemon (demo)
 
-One process keeps models in RAM. Another terminal runs `task.py` **inside that process** so `get_model(hf_id)` returns the real object. First use of an id loads from Hugging Face and caches until the daemon exits.
+One process keeps models in RAM. Another terminal runs `task.py` **inside that process**. The daemon wraps `AutoModelForCausalLM.from_pretrained` so the **same task script** can run standalone (normal load every time) or under the daemon (first load cached by model id until exit). `task.py` does not import or mention the daemon.
 
 Not production-ready—just shows the pattern.
 
@@ -12,7 +12,13 @@ Not production-ready—just shows the pattern.
 uv sync
 ```
 
-Run commands with the project environment:
+Task only (no daemon):
+
+```bash
+uv run python task.py --model Qwen/Qwen3-0.6B
+```
+
+With the daemon:
 
 ```bash
 uv run python model_daemon.py serve

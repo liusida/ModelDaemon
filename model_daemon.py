@@ -1,14 +1,12 @@
 """
-Demo: one long-lived process loads models; another terminal asks it to run a script
-in the same interpreter so get_model() returns the real in-memory object.
+Demo: one long-lived process; guest scripts run in-process. Their normal
+``AutoModelForCausalLM.from_pretrained(...)`` calls are wrapped so the first load
+is cached by model id until the daemon exits. The task file needs no daemon imports.
 
   Terminal A: python model_daemon.py serve
   Terminal B: python model_daemon.py run task.py --model org/name
 
 Optional: python model_daemon.py serve warmup.py  # warmup.py defines load_models() -> dict
-
-get_model(hf_model_id) returns the same kind of object as AutoModelForCausalLM.from_pretrained
-(lazy on first use, cached by id until exit). Load tokenizers in the task with AutoTokenizer as usual.
 """
 
 from __future__ import annotations
@@ -49,38 +47,35 @@ def _recv_msg(sock: socket.socket) -> dict:
 
 
 _REGISTRY: dict = {}
+_AUTOMODEL_PATCHED = False
 
 
-def _load_hf_causal_lm(model_id: str):
-    """Same stack as AutoModelForCausalLM.from_pretrained; not called until get_model(id)."""
+def _ensure_automodel_cache_patch() -> None:
+    """So guest code can use plain AutoModelForCausalLM.from_pretrained."""
+    global _AUTOMODEL_PATCHED
+    if _AUTOMODEL_PATCHED:
+        return
     try:
-        import torch
         from transformers import AutoModelForCausalLM
     except ImportError as e:
         raise RuntimeError(
-            "lazy load needs torch+transformers (uv sync, or pip install -e .)"
+            "need torch+transformers in the daemon env (uv sync, or pip install -e .)"
         ) from e
 
-    print(f"lazy-load: {model_id!r} …", file=sys.stderr, flush=True)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.float16 if device == "cuda" else torch.float32
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        torch_dtype=dtype,
-        trust_remote_code=True,
-    )
-    model = model.to(device)
-    return model
+    _orig = AutoModelForCausalLM.from_pretrained.__func__
 
+    def _wrapped(cls, pretrained_model_name_or_path, *model_args, **kwargs):
+        key = str(pretrained_model_name_or_path)
+        if key in _REGISTRY:
+            return _REGISTRY[key]
+        print(f"load: {key!r} (AutoModelForCausalLM.from_pretrained) …", file=sys.stderr, flush=True)
+        model = _orig(cls, pretrained_model_name_or_path, *model_args, **kwargs)
+        _REGISTRY[key] = model
+        print(f"cache: {list(_REGISTRY)}", file=sys.stderr, flush=True)
+        return model
 
-def get_model(model_id: str):
-    """Injected into guest scripts: cached AutoModelForCausalLM (or pre-seeded loader value)."""
-    if not isinstance(model_id, str) or not model_id.strip():
-        raise ValueError("get_model(model_id) needs a non-empty string (HF repo id)")
-    if model_id not in _REGISTRY:
-        _REGISTRY[model_id] = _load_hf_causal_lm(model_id)
-        print(f"cache keys: {list(_REGISTRY)}", file=sys.stderr, flush=True)
-    return _REGISTRY[model_id]
+    AutoModelForCausalLM.from_pretrained = classmethod(_wrapped)
+    _AUTOMODEL_PATCHED = True
 
 
 def _load_models(loader_path: str) -> dict:
@@ -112,11 +107,11 @@ def _run_guest(script_path: str, argv: list[str]) -> dict:
     out, err = io.StringIO(), io.StringIO()
     old_argv = sys.argv[:]
     try:
+        _ensure_automodel_cache_patch()
         sys.argv = argv
         init = {
             "__name__": "__main__",
             "__file__": str(path),
-            "get_model": get_model,
         }
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             runpy.run_path(str(path), init_globals=init, run_name="__main__")
