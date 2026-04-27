@@ -31,7 +31,7 @@ uv run model_daemon.py run task.py --model Qwen/Qwen3-0.6B
 同一份 `task.py`；差别在于 `from_pretrained` 是在新进程里完整跑一遍，还是复用守护进程里已在显存/内存中的权重。某台 CUDA 机器上的示例：
 
 ```text
-$ python task.py
+$ python task.py --model Qwen/Qwen3-0.6B
 [transformers] `torch_dtype` is deprecated! Use `dtype` instead!
 Loading weights: 100%|████████████████| 311/311 [00:00<00:00, 3634.76it/s]
 Qwen/Qwen3-0.6B: 596.05M params, device=cuda:0
@@ -39,7 +39,7 @@ Qwen/Qwen3-0.6B: 596.05M params, device=cuda:0
 sample: "Hello Answer! I'm a bit confused about"
 wall time: 3.680s
 
-$ python model_daemon.py run task.py
+$ python model_daemon.py run task.py --model Qwen/Qwen3-0.6B
 Qwen/Qwen3-0.6B: 596.05M params, device=cuda:0
 sample: "Hello Answer! I'm a bit confused about"
 wall time: 1.792s

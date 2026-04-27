@@ -31,7 +31,7 @@ Default port `8765`. Same `MODEL_DAEMON_PORT` in both terminals if you change it
 Same `task.py`; only whether the heavy `from_pretrained` runs in a fresh process or reuses RAM in the daemon. Example on one CUDA machine:
 
 ```text
-$ python task.py
+$ python task.py --model Qwen/Qwen3-0.6B
 [transformers] `torch_dtype` is deprecated! Use `dtype` instead!
 Loading weights: 100%|████████████████| 311/311 [00:00<00:00, 3634.76it/s]
 Qwen/Qwen3-0.6B: 596.05M params, device=cuda:0
@@ -39,7 +39,7 @@ Qwen/Qwen3-0.6B: 596.05M params, device=cuda:0
 sample: "Hello Answer! I'm a bit confused about"
 wall time: 3.680s
 
-$ python model_daemon.py run task.py
+$ python model_daemon.py run task.py --model Qwen/Qwen3-0.6B
 Qwen/Qwen3-0.6B: 596.05M params, device=cuda:0
 sample: "Hello Answer! I'm a bit confused about"
 wall time: 1.792s
