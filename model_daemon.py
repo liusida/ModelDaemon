@@ -48,6 +48,26 @@ def _recv_msg(sock: socket.socket) -> dict:
     return json.loads(_recvn(sock, n).decode("utf-8"))
 
 
+class _ConnStream(io.TextIOBase):
+    """Send each guest write to the client as a chunk (streaming)."""
+
+    encoding = "utf-8"
+
+    def __init__(self, conn: socket.socket, stream: str) -> None:
+        super().__init__()
+        self._conn = conn
+        self._stream = stream
+
+    def write(self, s: str) -> int:
+        if not s:
+            return 0
+        _send_msg(self._conn, {"type": "chunk", "stream": self._stream, "text": s})
+        return len(s)
+
+    def flush(self) -> None:
+        return None
+
+
 _REGISTRY: dict = {}
 _AUTOMODEL_PATCHED = False
 
@@ -96,17 +116,15 @@ def _load_models(loader_path: str) -> dict:
     return out
 
 
-def _run_guest(script_path: str, argv: list[str]) -> dict:
+def _run_guest(script_path: str, argv: list[str], conn: socket.socket) -> None:
     path = Path(script_path).resolve()
     if not path.is_file():
-        return {
-            "ok": False,
-            "error": f"not found: {path}",
-            "traceback": "",
-            "stdout": "",
-            "stderr": "",
-        }
-    out, err = io.StringIO(), io.StringIO()
+        _send_msg(
+            conn,
+            {"type": "done", "ok": False, "error": f"not found: {path}"},
+        )
+        return
+
     old_argv = sys.argv[:]
     try:
         _ensure_automodel_cache_patch()
@@ -115,17 +133,18 @@ def _run_guest(script_path: str, argv: list[str]) -> dict:
             "__name__": "__main__",
             "__file__": str(path),
         }
+        out = _ConnStream(conn, "stdout")
+        err = _ConnStream(conn, "stderr")
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             runpy.run_path(str(path), init_globals=init, run_name="__main__")
-        return {"ok": True, "stdout": out.getvalue(), "stderr": err.getvalue()}
+        _send_msg(conn, {"type": "done", "ok": True})
     except BaseException:
-        return {
-            "ok": False,
-            "error": "script failed",
-            "traceback": traceback.format_exc(),
-            "stdout": out.getvalue(),
-            "stderr": err.getvalue(),
-        }
+        tb = traceback.format_exc()
+        try:
+            _send_msg(conn, {"type": "chunk", "stream": "stderr", "text": tb})
+        except OSError:
+            pass
+        _send_msg(conn, {"type": "done", "ok": False, "error": "script failed"})
     finally:
         sys.argv = old_argv
 
@@ -162,12 +181,15 @@ def _serve(loader_path: str | None, host: str, port: int) -> None:
             conn, addr = sock.accept()
             with conn:
                 try:
+                    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     msg = _recv_msg(conn)
                     if msg.get("cmd") != "run":
-                        _send_msg(conn, {"ok": False, "error": "need cmd run"})
+                        _send_msg(
+                            conn,
+                            {"type": "done", "ok": False, "error": "need cmd run"},
+                        )
                         continue
-                    reply = _run_guest(msg["script"], msg["argv"])
-                    _send_msg(conn, reply)
+                    _run_guest(msg["script"], msg["argv"], conn)
                 except (ConnectionError, json.JSONDecodeError, OSError, KeyError) as e:
                     print(f"{addr}: {e}", file=sys.stderr)
     except KeyboardInterrupt:
@@ -185,22 +207,37 @@ def _client(script: str, argv: list[str], host: str, port: int) -> int:
         print("no server — start: python model_daemon.py serve", file=sys.stderr)
         return 1
     try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         _send_msg(
             sock,
             {"cmd": "run", "script": str(Path(script).resolve()), "argv": argv},
         )
-        reply = _recv_msg(sock)
+        while True:
+            reply = _recv_msg(sock)
+            t = reply.get("type")
+            if t == "chunk":
+                stream = reply.get("stream", "stdout")
+                text = reply.get("text", "")
+                if stream == "stderr":
+                    sys.stderr.write(text)
+                    sys.stderr.flush()
+                else:
+                    sys.stdout.write(text)
+                    sys.stdout.flush()
+            elif t == "done":
+                if not reply.get("ok"):
+                    err = reply.get("error")
+                    if err:
+                        print(err, file=sys.stderr)
+                return 0 if reply.get("ok") else 1
+            else:
+                print(f"unknown message: {reply!r}", file=sys.stderr)
+                return 1
+    except ConnectionError as e:
+        print(f"connection lost: {e}", file=sys.stderr)
+        return 1
     finally:
         sock.close()
-
-    if not reply.get("ok"):
-        print(reply.get("error", "error"), file=sys.stderr)
-        tb = reply.get("traceback")
-        if tb:
-            print(tb, file=sys.stderr, end="")
-    sys.stdout.write(reply.get("stdout", ""))
-    sys.stderr.write(reply.get("stderr", ""))
-    return 0 if reply.get("ok") else 1
 
 
 def main(argv: list[str] | None = None) -> int:

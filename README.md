@@ -50,6 +50,7 @@ wall time: 1.792s
 - One long-lived process loads and caches models by Hugging Face id (via a wrap on `AutoModelForCausalLM.from_pretrained`).
 - `task.py` uses ordinary Transformers calls; it does not import the daemon.
 - Run `task.py` alone for a normal cold start each time; run it through `model_daemon.py run …` to reuse weights until the server exits.
+- Guest **stdout/stderr stream live** to the client terminal (chunked over TCP), so logs and progress bars show up as they run instead of after exit.
 - Repeating the same `--model` skips reload; another id loads once and stays cached.
 
 Optional: `python model_daemon.py serve my_loader.py` where `my_loader.py` defines `load_models() -> dict` to pre-seed the cache.

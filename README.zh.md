@@ -50,6 +50,7 @@ wall time: 1.792s
 - 常驻进程按 Hugging Face 模型 id 加载并缓存权重（通过包装 `AutoModelForCausalLM.from_pretrained`）。
 - `task.py` 只用常规 Transformers 写法，不 import 守护进程。
 - 单独运行 `task.py` 每次冷启动；通过 `model_daemon.py run …` 执行则直到服务端退出前都可复用权重。
+- 访客进程的 **stdout/stderr 会实时传到客户端终端**（分块经 TCP 写出），日志和进度条边跑边显示，而不是等脚本结束再一次性回传。
 - 相同 `--model` 会跳过重复加载；新 id 首次加载后也会保留在缓存中。
 
 可选：`python model_daemon.py serve my_loader.py`，`my_loader.py` 中定义 `load_models() -> dict`，在跑任务前预填缓存。
